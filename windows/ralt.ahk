@@ -4,7 +4,9 @@ ListLines 0
 
 ; --- 全局變數與初始化 ---
 Global SettingsFile := A_ScriptDir . "\ralt_settings.json"
-; 關鍵修正：設定 Map 為不分大小寫 (CaseSense Off)
+; 建立開機啟動捷徑的路徑
+Global StartupShortcut := A_Startup "\ralt.lnk"
+
 Global CustomMap := Map()
 CustomMap.CaseSense := "Off" 
 
@@ -20,13 +22,38 @@ RegisterHotkeys()
 SetupTray() {
     A_TrayMenu.Delete()
     A_TrayMenu.Add("設定 ralt", (*) => ShowSettingsGui())
+    
+    ; --- 新增：開機啟動切換選項 ---
+    A_TrayMenu.Add("開機啟動", ToggleStartup)
+    if FileExist(StartupShortcut)
+        A_TrayMenu.Check("開機啟動")
+    ; --------------------------
+
     A_TrayMenu.Add()
     A_TrayMenu.Add("重新啟動", (*) => Reload())
     A_TrayMenu.Add("結束", (*) => ExitApp())
     A_TrayMenu.Default := "設定 ralt"
 }
 
-; --- 2. 設定視窗 GUI ---
+; --- 新增：處理開機啟動的邏輯 ---
+ToggleStartup(*) {
+    if FileExist(StartupShortcut) {
+        FileDelete(StartupShortcut)
+        A_TrayMenu.Uncheck("開機啟動")
+        MsgBox("已取消開機啟動", "ralt", "Iconi T3")
+    } else {
+        try {
+            ; 建立指向目前腳本完整路徑的捷徑
+            FileCreateShortcut(A_ScriptFullPath, StartupShortcut, A_ScriptDir)
+            A_TrayMenu.Check("開機啟動")
+            MsgBox("已設定開機時自動啟動", "ralt", "Iconi T3")
+        } catch Error as err {
+            MsgBox("設定失敗: " . err.Message, "錯誤", "Iconx")
+        }
+    }
+}
+
+; --- 2. 設定視窗 GUI (與你原本的邏輯相同) ---
 ShowSettingsGui() {
     MyGui := Gui("+AlwaysOnTop", "ralt 自定義按鍵設定")
     MyGui.SetFont("s10", "Microsoft JhengHei")
@@ -154,25 +181,19 @@ RefreshAppGroup(letter) {
             style := WinGetStyle(id)
             exStyle := WinGetExStyle(id)
 
-            ; 1. 基本過濾：必須有標題、必須可見、不能是工具視窗
             if (title == "" || !(style & 0x10000000) || (exStyle & 0x00000080))
                 continue
                 
             proc := WinGetProcessName(id)
             class := WinGetClass(id)
             
-            ; 2. 決定按鍵 (CustomMap 優先)
             appLetter := CustomMap.Has(proc) ? CustomMap[proc] : StrLower(SubStr(proc, 1, 1))
             
             if (appLetter == letter) {
-                ; 3. 特殊處理檔案總管
                 if (proc == "explorer.exe" && class != "CabinetWClass")
                     continue
                 
-                ; 4. 特殊處理 Edge (排除那些沒有視窗主體的背景進程)
-                if (proc == "msedge.exe" && !InStr(title, "Microsoft​ Edge")) {
-                    ; 有些 Edge 視窗是 PWA 或背景，我們只取標題包含 Edge 的
-                    ; 如果是 PWA 視窗，這行可以根據需求調整
+                if (proc == "msedge.exe" && !InStr(title, "Edge")) {
                 }
 
                 if !uniqueApps.Has(proc) {
