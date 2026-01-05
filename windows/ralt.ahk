@@ -4,7 +4,6 @@ ListLines 0
 
 ; --- 全局變數與初始化 ---
 Global SettingsFile := A_ScriptDir . "\ralt_settings.json"
-; 建立開機啟動捷徑的路徑
 Global StartupShortcut := A_Startup "\ralt.lnk"
 
 Global CustomMap := Map()
@@ -23,11 +22,9 @@ SetupTray() {
     A_TrayMenu.Delete()
     A_TrayMenu.Add("設定 ralt", (*) => ShowSettingsGui())
     
-    ; --- 新增：開機啟動切換選項 ---
     A_TrayMenu.Add("開機啟動", ToggleStartup)
     if FileExist(StartupShortcut)
         A_TrayMenu.Check("開機啟動")
-    ; --------------------------
 
     A_TrayMenu.Add()
     A_TrayMenu.Add("重新啟動", (*) => Reload())
@@ -35,7 +32,6 @@ SetupTray() {
     A_TrayMenu.Default := "設定 ralt"
 }
 
-; --- 新增：處理開機啟動的邏輯 ---
 ToggleStartup(*) {
     if FileExist(StartupShortcut) {
         FileDelete(StartupShortcut)
@@ -43,7 +39,6 @@ ToggleStartup(*) {
         MsgBox("已取消開機啟動", "ralt", "Iconi T3")
     } else {
         try {
-            ; 建立指向目前腳本完整路徑的捷徑
             FileCreateShortcut(A_ScriptFullPath, StartupShortcut, A_ScriptDir)
             A_TrayMenu.Check("開機啟動")
             MsgBox("已設定開機時自動啟動", "ralt", "Iconi T3")
@@ -53,7 +48,7 @@ ToggleStartup(*) {
     }
 }
 
-; --- 2. 設定視窗 GUI (與你原本的邏輯相同) ---
+; --- 2. 設定視窗 GUI ---
 ShowSettingsGui() {
     MyGui := Gui("+AlwaysOnTop", "ralt 自定義按鍵設定")
     MyGui.SetFont("s10", "Microsoft JhengHei")
@@ -172,8 +167,6 @@ RefreshAppGroup(letter) {
     Global AppGroups, CustomMap
     AppGroups[letter] := []
     ids := WinGetList(,, "Program Manager")
-    uniqueApps := Map()
-    uniqueApps.CaseSense := "Off"
 
     for id in ids {
         try {
@@ -181,25 +174,28 @@ RefreshAppGroup(letter) {
             style := WinGetStyle(id)
             exStyle := WinGetExStyle(id)
 
+            ; 1. 基礎過濾：必須有標題、可見、非工具視窗
             if (title == "" || !(style & 0x10000000) || (exStyle & 0x00000080))
                 continue
                 
             proc := WinGetProcessName(id)
             class := WinGetClass(id)
             
+            ; 2. 判斷按鍵 (自定義優先，否則用首字母)
             appLetter := CustomMap.Has(proc) ? CustomMap[proc] : StrLower(SubStr(proc, 1, 1))
             
             if (appLetter == letter) {
+                ; 3. 檔案總管過濾：只保留資料夾視窗
                 if (proc == "explorer.exe" && class != "CabinetWClass")
                     continue
                 
-                if (proc == "msedge.exe" && !InStr(title, "Edge")) {
-                }
+                ; 4. Edge 視窗過濾 (排除某些背景小組件)
+                if (proc == "msedge.exe" && !InStr(title, "Edge"))
+                    continue
 
-                if !uniqueApps.Has(proc) {
-                    uniqueApps[proc] := id
-                    AppGroups[letter].Push(id)
-                }
+                ; --- 核心修正：移除 uniqueApps 判斷 ---
+                ; 現在同一個 App 的每個視窗都會被加入清單中
+                AppGroups[letter].Push(id)
             }
         }
     }
